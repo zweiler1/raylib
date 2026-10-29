@@ -157,6 +157,9 @@
         #define MAX_PATH 260
     #endif
 
+// NOTE: nxdk (Xbox) does not provide these kernel32/winmm DLL imports; the
+// Xbox backend implements its own equivalents (see platforms/rcore_xbox.c).
+#if !defined(PLATFORM_XBOX)
     struct HINSTANCE__;
     #if defined(__cplusplus)
     extern "C" {
@@ -170,6 +173,7 @@
     #if defined(__cplusplus)
     }
     #endif
+#endif
 #elif defined(__linux__)
     #include <unistd.h>
 #elif defined(__FreeBSD__)
@@ -499,7 +503,7 @@ static void ScanDirectoryFiles(const char *basePath, FilePathList *list, const c
 static void RecordAutomationEvent(void); // Record frame events (to internal events array)
 #endif
 
-#if defined(_WIN32) && !defined(PLATFORM_DESKTOP_RGFW)
+#if defined(_WIN32) && !defined(PLATFORM_DESKTOP_RGFW) && !defined(PLATFORM_XBOX)
 // NOTE: Declaring Sleep() function symbol to avoid including windows.h (kernel32.lib linkage required)
 __declspec(dllimport) void __stdcall Sleep(unsigned long msTimeout); // Required for: WaitTime()
 #endif
@@ -528,6 +532,8 @@ const char *TextFormat(const char *text, ...); // Formatting of text with variab
     #include "platforms/rcore_drm.c"
 #elif defined(PLATFORM_ANDROID)
     #include "platforms/rcore_android.c"
+#elif defined(PLATFORM_XBOX)
+    #include "platforms/rcore_xbox.c"
 #elif defined(PLATFORM_MEMORY)
     #include "platforms/rcore_memory.c"
 #else
@@ -584,6 +590,9 @@ const char *TextFormat(const char *text, ...); // Formatting of text with variab
 // Initialize window and OpenGL context
 void InitWindow(int width, int height, const char *title)
 {
+#if defined(PLATFORM_XBOX)
+    SetTraceLogCallback(CustomLog);
+#endif
     TRACELOG(LOG_INFO, "Initializing raylib %s", RAYLIB_VERSION);
 
 #if defined(PLATFORM_DESKTOP_GLFW)
@@ -602,6 +611,8 @@ void InitWindow(int width, int height, const char *title)
     TRACELOG(LOG_INFO, "Platform backend: NATIVE DRM");
 #elif defined(PLATFORM_ANDROID)
     TRACELOG(LOG_INFO, "Platform backend: ANDROID");
+#elif defined(PLATFORM_XBOX)
+    TRACELOG(LOG_INFO, "Platform backend: XBOX");
 #elif defined(PLATFORM_MEMORY)
     TRACELOG(LOG_INFO, "Platform backend: MEMORY (No OS)");
 #else
@@ -718,7 +729,11 @@ void InitWindow(int width, int height, const char *title)
     SetRandomSeed(get_rand_32());
     #endif
 
+#if defined(PLATFORM_XBOX)
+    TRACELOG(LOG_INFO, "PLATFORM: Application initialized successfully");
+#else
     TRACELOG(LOG_INFO, "SYSTEM: Working Directory: %s", GetWorkingDirectory());
+#endif
 }
 
 // Close window and unload OpenGL context
@@ -1572,6 +1587,10 @@ Vector2 GetScreenToWorld2D(Vector2 position, Camera2D camera)
 // Set target FPS (maximum)
 void SetTargetFPS(int fps)
 {
+#if defined(PLATFORM_XBOX)
+    SetTargetFPSXbox(fps);
+    return;
+#endif
     if (fps < 1) CORE.Time.target = 0.0;
     else CORE.Time.target = 1.0/(double)fps;
 
@@ -2419,7 +2438,9 @@ bool IsFileExtension(const char *fileName, const char *ext)
 bool IsFileHidden(const char *filePath)
 {
     bool result = false;
-#if defined(_WIN32)
+    // NOTE: nxdk (Xbox) provides neither GetFileAttributesA() nor DOS file
+    // attributes, so the POSIX-ish "leading dot" rule is used there.
+#if defined(_WIN32) && !defined(PLATFORM_XBOX)
     unsigned long attribs = GetFileAttributesA(filePath);
 
     // Check !INVALID_FILE_ATTRIBUTES and FILE_ATTRIBUTE_HIDDEN
@@ -2647,7 +2668,11 @@ const char *GetApplicationDirectory(void)
     static char appDir[MAX_FILEPATH_LENGTH] = { 0 };
     memset(appDir, 0, MAX_FILEPATH_LENGTH);
 
-#if defined(_WIN32)
+#if defined(PLATFORM_XBOX)
+    // nxdk's automount_d (enabled by default) mounts the running XBE's
+    // directory as D:, which is the closest equivalent on this platform.
+    strcpy(appDir, "D:\\");
+#elif defined(_WIN32)
     int len = 0;
 
     #if defined(UNICODE)
@@ -4305,7 +4330,7 @@ void InitTimer(void)
     // However, it can also reduce overall system performance, because the thread scheduler switches tasks more often
     // High resolutions can also prevent the CPU power management system from entering power-saving modes
     // Setting a higher resolution does not improve the accuracy of the high-resolution performance counter
-#if defined(_WIN32) && SUPPORT_WINMM_HIGHRES_TIMER && !SUPPORT_BUSY_WAIT_LOOP && !defined(PLATFORM_DESKTOP_SDL)
+#if defined(_WIN32) && SUPPORT_WINMM_HIGHRES_TIMER && !SUPPORT_BUSY_WAIT_LOOP && !defined(PLATFORM_DESKTOP_SDL) && !defined(PLATFORM_XBOX)
     timeBeginPeriod(1); // Setup high-resolution timer to 1ms (granularity of 1-2 ms)
 #endif
 
@@ -4319,6 +4344,9 @@ void InitTimer(void)
     else TRACELOG(LOG_WARNING, "TIMER: Hi-resolution timer not available");
 #endif
 
+#if defined(PLATFORM_XBOX)
+    XboxInitTimer();
+#endif
     CORE.Time.previous = GetTime(); // Get time as double
 }
 
@@ -4335,8 +4363,12 @@ void SetupViewport(int width, int height)
     rlLoadIdentity();                   // Reset current matrix (projection)
 
     // Set orthographic projection to current framebuffer size
+#if defined(PLATFORM_XBOX)
+    rlOrtho(0, CORE.Window.render.width, CORE.Window.render.height, 0, -1.0f, 1.0f);
+#else
     // NOTE: Configured top-left corner as (0, 0)
     rlOrtho(0, CORE.Window.render.width, CORE.Window.render.height, 0, 0.0f, 1.0f);
+#endif
 
     rlMatrixMode(RL_MODELVIEW);         // Switch back to modelview matrix
     rlLoadIdentity();                   // Reset current matrix (modelview)

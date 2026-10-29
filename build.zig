@@ -314,7 +314,13 @@ pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) !void {
     mod.linkFramework("QuartzCore", .{});
 }
 
-fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, options: Options) !*std.Build.Step.Compile {
+fn compileRaylib(b: *std.Build, target_arg: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, options: Options) !*std.Build.Step.Compile {
+    const target =
+        if (options.platform == .xbox)
+            b.resolveTargetQuery(@import("nxdk_zig").target_query)
+        else
+            target_arg;
+
     const raylib_mod = b.createModule(.{
         .optimize = optimize,
         .target = target,
@@ -344,7 +350,11 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
 
     try c_source_files.append("src/rcore.c");
 
-    if (target.result.os.tag == .emscripten) {
+    if (options.platform == .xbox) {
+        // nxdk's pdclib extension headers expect C11 (aligned_alloc() is only
+        // declared for __STDC_VERSION__ >= 201112L)
+        try raylib_flags_arr.append("-std=gnu11");
+    } else if (target.result.os.tag == .emscripten) {
         try raylib_flags_arr.append("-std=gnu99");
     } else {
         try raylib_flags_arr.append("-std=c99");
@@ -384,8 +394,14 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
     if (options.rmodels) {
         try c_source_files.append("src/rmodels.c");
     }
-    raylib_mod.addCMacro("SUPPORT_MODULE_RAUDIO", &.{@as(u8, @intFromBool(options.raudio)) + 0x30});
-    if (options.raudio) {
+
+    const raudio = options.raudio and (options.platform != .xbox);
+    if (options.raudio and (options.platform == .xbox)) {
+        std.log.warn("Audio (raudio) is not supported by the Xbox backend yet, building without it", .{});
+    }
+
+    raylib_mod.addCMacro("SUPPORT_MODULE_RAUDIO", &.{@as(u8, @intFromBool(raudio)) + 0x30});
+    if (raudio) {
         try c_source_files.append("src/raudio.c");
     }
 
@@ -650,6 +666,39 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
             const libcFile = write_step.add("android-libc.txt", libc_data);
             raylib.setLibCFile(libcFile);
         },
+        .xbox => {
+            raylib_mod.link_libc = false;
+
+            if (options.opengl_version != .auto and options.opengl_version != .gl_1_1) {
+                @panic("The opengl version is not supported by this platform");
+            }
+
+            raylib_mod.addCMacro("PLATFORM_XBOX", "");
+            raylib_mod.addCMacro(OpenglVersion.gl_1_1.toCMacroStr(), "");
+
+            raylib_mod.addIncludePath(b.path("src/platforms/xbox_compat"));
+            try c_source_files.append("src/platforms/xbox_compat/xbox_compat.c");
+
+            const nxdk_zig_dep = try b.dependencyLazy("nxdk_zig", .{
+                .optimize = optimize,
+            });
+            @import("nxdk_zig").addCIncludePaths(raylib_mod, nxdk_zig_dep);
+
+            raylib_mod.linkLibrary(nxdk_zig_dep.artifact("nxdk_usb"));
+
+            const nxdk_pbgl_zig_dep = try b.dependencyLazy("nxdk-pbgl_zig", .{
+                .optimize = optimize,
+            });
+            raylib_mod.linkLibrary(nxdk_pbgl_zig_dep.artifact("nxdk_pbgl"));
+            raylib.installLibraryHeaders(nxdk_pbgl_zig_dep.artifact("nxdk_pbgl"));
+
+            for (@import("nxdk_zig").c_flags) |flag| {
+                try raylib_flags_arr.append(flag);
+            }
+
+            // The Xbox's CPU (Pentium III) supports SSE but not SSE2.
+            try raylib_flags_arr.append("-DSTBIR_NO_SIMD");
+        },
     }
 
     raylib_mod.addCSourceFiles(.{
@@ -660,7 +709,7 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
     return raylib;
 }
 
-fn addRaygui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, raylib: *std.Build.Step.Compile) !void {
+fn addRaygui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, raylib: *std.Build.Step.Compile, platform: PlatformBackend) !void {
     const raygui_dep = try b.dependencyLazy("raygui", .{
         .target = target,
         .optimize = optimize,
@@ -671,7 +720,9 @@ fn addRaygui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     raylib.step.dependOn(&gen_step.step);
 
     const raygui_c_path = gen_step.add("raygui.c", "#define RAYGUI_IMPLEMENTATION\n#include \"raygui.h\"\n");
-    raylib.root_module.addCSourceFile(.{ .file = raygui_c_path });
+
+    const xbox_c_flags: []const []const u8 = if (platform == .xbox) @import("nxdk_zig").c_flags else &.{};
+    raylib.root_module.addCSourceFile(.{ .file = raygui_c_path, .flags = xbox_c_flags });
     raylib.root_module.addIncludePath(raygui_dep.path("src"));
     raylib.root_module.addIncludePath(b.path("src"));
 
@@ -767,6 +818,7 @@ pub const PlatformBackend = enum {
     win32,
     drm,
     android,
+    xbox,
 };
 
 fn translateCMod(
@@ -807,7 +859,7 @@ pub fn build(b: *std.Build) !void {
     translateCMod("rlgl", b, target, optimize, lib);
 
     if (options.raygui) {
-        try addRaygui(b, target, optimize, lib);
+        try addRaygui(b, target, optimize, lib, options.platform);
     }
 
     const examples = b.step("examples", "build/install all examples");

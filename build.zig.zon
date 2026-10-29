@@ -21,6 +21,16 @@
             .hash = "N-V-__8AAJl1DwBezhYo_VE6f53mPVm00R-Fk28NPW7P14EQ",
             .lazy = true,
         },
+        .nxdk_zig = .{
+            .url = "git+https://github.com/zweiler2/nxdk_zig#fbde653cb18891f72f16698cc2722c0b835cdf56",
+            .hash = "nxdk_zig-0.0.1-BbFuWRYKCQD28vLfLfS6Vl1EdFyfwvp-yQuo71Inexvc",
+            .lazy = true,
+        },
+        .@"nxdk-pbgl_zig" = .{
+            .url = "git+https://github.com/zweiler2/nxdk-pbgl_zig#a9a4442f480c19e864c3f645e5e8787962e41516",
+            .hash = "nxdk_pbgl_zig-0.0.1-6KMnaPBDAgCjqZ2tr6ntusuW7I1B9uccpdw4Sb8U9KZq",
+            .lazy = true,
+        },
     },
 
     .paths = .{
