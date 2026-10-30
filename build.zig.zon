@@ -22,13 +22,13 @@
             .lazy = true,
         },
         .nxdk_zig = .{
-            .url = "git+https://github.com/zweiler2/nxdk_zig#fbde653cb18891f72f16698cc2722c0b835cdf56",
-            .hash = "nxdk_zig-0.0.1-BbFuWRYKCQD28vLfLfS6Vl1EdFyfwvp-yQuo71Inexvc",
+            .url = "git+https://github.com/zweiler2/nxdk_zig#63fa287f9c6397161e2c5d078ed5ff5a4897311f",
+            .hash = "nxdk_zig-0.0.1-BbFuWaoVCQC6No6W427vvApjTElfWJQ4JEA0oMIwzOQQ",
             .lazy = true,
         },
         .@"nxdk-pbgl_zig" = .{
-            .url = "git+https://github.com/zweiler2/nxdk-pbgl_zig#a9a4442f480c19e864c3f645e5e8787962e41516",
-            .hash = "nxdk_pbgl_zig-0.0.1-6KMnaPBDAgCjqZ2tr6ntusuW7I1B9uccpdw4Sb8U9KZq",
+            .url = "git+https://github.com/zweiler2/nxdk-pbgl_zig#f0c7cae9820040ccf27c839cc864846cb37db12f",
+            .hash = "nxdk_pbgl_zig-0.0.1-6KMnaPRDAgAnQoVT0skQvfNTMlvXuT3zB3T616ZzRT6c",
             .lazy = true,
         },
     },
